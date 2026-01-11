@@ -42,14 +42,6 @@ async def hello(ctx):
 class StudyView(View):
     def __init__(self):
         super().__init__(timeout=60)
-        # On crée les boutons avec des custom_id uniques
-        self.add_item(Button(label="20 min", style=discord.ButtonStyle.primary, custom_id="study_20"))
-        self.add_item(Button(label="40 min", style=discord.ButtonStyle.primary, custom_id="study_40"))
-        self.add_item(Button(label="60 min", style=discord.ButtonStyle.primary, custom_id="study_60"))
-
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        """Vérifie qu’un utilisateur peut cliquer."""
-        return True
 
     @discord.ui.button(label="20 min", style=discord.ButtonStyle.primary, custom_id="study_20")
     async def study_20(self, button: Button, interaction: discord.Interaction):
@@ -64,7 +56,6 @@ class StudyView(View):
         await self.start_session(interaction, 60)
 
     async def start_session(self, interaction: discord.Interaction, minutes: int):
-        # Défer immédiatement l'interaction
         await interaction.response.defer(ephemeral=True)
 
         user_id = interaction.user.id
@@ -84,65 +75,43 @@ async def start_study(interaction: discord.Interaction, minutes: int):
     guild = interaction.guild
     member = interaction.user
 
-    # ---- ROLE CHECK ----
     role = discord.utils.get(guild.roles, name=STUDY_ROLE_NAME)
     if not role:
-        await interaction.followup.send(
-            "❌ Le rôle **Studying** n'existe pas.",
-            ephemeral=True
-        )
+        await interaction.followup.send("❌ Le rôle **Studying** n'existe pas.", ephemeral=True)
         active_sessions.pop(member.id, None)
         return
 
-    # ---- VOICE CHANNEL ----
-    study_channel = discord.utils.get(
-        guild.voice_channels,
-        name=STUDY_VOICE_CHANNEL_NAME
-    )
-
+    study_channel = discord.utils.get(guild.voice_channels, name=STUDY_VOICE_CHANNEL_NAME)
     if not study_channel:
-        await interaction.followup.send(
-            "❌ Le salon vocal **Étude 🤓** est introuvable.",
-            ephemeral=True
-        )
+        await interaction.followup.send("❌ Le salon vocal **Étude 🤓** est introuvable.", ephemeral=True)
         active_sessions.pop(member.id, None)
         return
 
     should_mute = False
-
-    # ---- SI DÉJÀ EN VOCAL ----
     if member.voice and member.voice.channel:
         if member.voice.channel.id != study_channel.id:
             try:
                 await member.move_to(study_channel)
             except (discord.Forbidden, discord.HTTPException):
                 await interaction.followup.send(
-                    "⚠️ Je n’ai pas pu te déplacer. Rejoins **Étude 🤓** manuellement.",
-                    ephemeral=True
+                    "⚠️ Impossible de te déplacer. Rejoins **Étude 🤓** manuellement.", ephemeral=True
                 )
         should_mute = True
     else:
         await interaction.followup.send(
-            "ℹ️ Rejoins le salon **Étude 🤓** pour être automatiquement mute.",
-            ephemeral=True
+            "ℹ️ Rejoins le salon **Étude 🤓** pour être automatiquement mute.", ephemeral=True
         )
 
-    # ---- AJOUT DU ROLE ----
     await member.add_roles(role)
 
-    # ---- MUTE ----
     if should_mute:
         try:
             await member.edit(mute=True)
         except discord.Forbidden:
             pass
 
-    await interaction.followup.send(
-        f"📚 **Session d’étude lancée pour {minutes} minutes. Bon focus !**",
-        ephemeral=True
-    )
+    await interaction.followup.send(f"📚 **Session d’étude lancée pour {minutes} minutes. Bon focus !**", ephemeral=True)
 
-    # ---- TIMER ----
     try:
         await asyncio.sleep(minutes * 60)
     except asyncio.CancelledError:
@@ -152,7 +121,6 @@ async def start_study(interaction: discord.Interaction, minutes: int):
 
     await cleanup(member)
     active_sessions.pop(member.id, None)
-
     try:
         await member.send("✅ **Ta session d’étude est terminée ! Bien joué 💪**")
     except discord.Forbidden:
@@ -163,7 +131,6 @@ async def cleanup(member: discord.Member):
     role = discord.utils.get(member.guild.roles, name=STUDY_ROLE_NAME)
     if role and role in member.roles:
         await member.remove_roles(role)
-
     if member.voice:
         try:
             await member.edit(mute=False)
@@ -184,11 +151,9 @@ async def on_voice_state_update(member, before, after):
 # ---- SLASH COMMANDS ----
 @bot.tree.command(name="study", description="Démarre une session d'étude")
 async def study(interaction: discord.Interaction):
-    """Envoie les boutons pour choisir la durée de la session."""
-    view = StudyView()
     await interaction.response.send_message(
         "⏱️ **Choisis la durée de ta session d’étude :**",
-        view=view,
+        view=StudyView(),
         ephemeral=True
     )
 
@@ -213,5 +178,4 @@ async def stopstudying(interaction: discord.Interaction):
         ephemeral=True
     )
 
-# ---- RUN BOT ----
 bot.run(TOKEN)
