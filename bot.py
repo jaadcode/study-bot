@@ -192,16 +192,29 @@ async def stopstudying(interaction: discord.Interaction):
     task = active_sessions.get(user_id)
 
     if not task:
-        await interaction.response.send_message("❌ Tu n’as pas de session en cours.", ephemeral=True)
+        if not interaction.response.is_done():
+            await interaction.response.send_message(
+                "❌ Tu n’as pas de session en cours.", ephemeral=True
+            )
+        else:
+            await interaction.followup.send(
+                "❌ Tu n’as pas de session en cours.", ephemeral=True
+            )
         return
 
+    # Annule la tâche et cleanup
     task.cancel()
     await cleanup(interaction.user)
     active_sessions.pop(user_id, None)
 
-    await interaction.response.send_message(
-        "⏹️ **Ta session d’étude a été annulée et tu as été démute.**", ephemeral=True
-    )
+    if not interaction.response.is_done():
+        await interaction.response.send_message(
+            "⏹️ Ta session d’étude a été annulée et tu as été démute.", ephemeral=True
+        )
+    else:
+        await interaction.followup.send(
+            "⏹️ Ta session d’étude a été annulée et tu as été démute.", ephemeral=True
+        )
 
 # ---- RUN BOT ----
 bot.run(TOKEN)
