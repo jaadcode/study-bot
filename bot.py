@@ -191,19 +191,27 @@ async def study(interaction: discord.Interaction):
 async def stopstudying(interaction: discord.Interaction):
     user_id = interaction.user.id
     task = active_sessions.get(user_id)
+
+    # Defer l’interaction si ce n’est pas déjà fait
+    try:
+        await interaction.response.defer(ephemeral=True)
+    except discord.errors.InteractionAlreadyResponded:
+        pass  # si déjà répondu, on continuera avec followup
+
     if not task:
-        await interaction.response.send_message(
+        await interaction.followup.send(
             "❌ Tu n’as pas de session en cours.",
             ephemeral=True
         )
         return
 
+    # Annule la tâche et cleanup
     task.cancel()
     await cleanup(interaction.user)
     active_sessions.pop(user_id, None)
 
-    await interaction.response.send_message(
-        "⏹️ **Ta session d’étude a été annulée.**",
+    await interaction.followup.send(
+        "⏹️ **Ta session d’étude a été annulée et tu as été démute.**",
         ephemeral=True
     )
 
