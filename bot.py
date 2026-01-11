@@ -177,10 +177,13 @@ async def on_voice_state_update(member, before, after):
 # ---- SLASH COMMANDS ----
 @bot.tree.command(name="study", description="Démarre une session d'étude")
 async def study(interaction: discord.Interaction):
-    view = StudyView()
-    await interaction.response.send_message(
+    # Defer immédiatement
+    await interaction.response.defer(ephemeral=True)
+
+    # Puis envoyer le message avec la View
+    await interaction.followup.send(
         "⏱️ **Choisis la durée de ta session d’étude :**",
-        view=view,
+        view=StudyView(),
         ephemeral=True
     )
 
