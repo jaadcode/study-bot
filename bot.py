@@ -3,7 +3,7 @@ from discord.ext import commands
 import os
 from dotenv import load_dotenv
 import asyncio
-from discord.ui import View
+from discord.ui import View, Button
 
 # ---- CONFIG ----
 load_dotenv()
@@ -19,6 +19,8 @@ intents.members = True
 intents.voice_states = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
+
+# ---- STATE ----
 active_sessions: dict[int, asyncio.Task] = {}
 
 # ---- EVENTS ----
@@ -26,10 +28,10 @@ active_sessions: dict[int, asyncio.Task] = {}
 async def on_ready():
     print(f"✅ Connecté comme {bot.user}")
     try:
-        await bot.tree.sync()
-        print("✅ Slash commands synchronisées !")
+        synced = await bot.tree.sync()
+        print(f"✅ Slash commands synchronisées ! ({len(synced)} commands)")
     except Exception as e:
-        print(f"⚠️ Erreur lors de la synchronisation des slash commands : {e}")
+        print("❌ Erreur synchronisation slash commands:", e)
 
 # ---- TEST COMMAND ----
 @bot.command()
@@ -42,19 +44,19 @@ class StudyView(View):
         super().__init__(timeout=60)
 
     @discord.ui.button(label="20 min", style=discord.ButtonStyle.primary, custom_id="study_20")
-    async def study_20(self, button: discord.ui.Button, interaction: discord.Interaction):
+    async def study_20(self, interaction: discord.Interaction, button: Button):
         await self.start_session(interaction, 20)
 
     @discord.ui.button(label="40 min", style=discord.ButtonStyle.primary, custom_id="study_40")
-    async def study_40(self, button: discord.ui.Button, interaction: discord.Interaction):
+    async def study_40(self, interaction: discord.Interaction, button: Button):
         await self.start_session(interaction, 40)
 
     @discord.ui.button(label="60 min", style=discord.ButtonStyle.primary, custom_id="study_60")
-    async def study_60(self, button: discord.ui.Button, interaction: discord.Interaction):
+    async def study_60(self, interaction: discord.Interaction, button: Button):
         await self.start_session(interaction, 60)
 
     async def start_session(self, interaction: discord.Interaction, minutes: int):
-        # defer interaction
+        # defer l'interaction immédiatement
         await interaction.response.defer(ephemeral=True)
 
         user_id = interaction.user.id
@@ -62,15 +64,15 @@ class StudyView(View):
             await interaction.followup.send("⚠️ Tu as déjà une session en cours.", ephemeral=True)
             return
 
-        # désactiver boutons
+        # Désactiver les boutons
         for child in self.children:
             child.disabled = True
         try:
             await interaction.message.edit(view=self)
         except discord.HTTPException:
-            pass
+            pass  # Message peut être introuvable ou supprimé
 
-        # lancer session
+        # Lancer la session
         task = asyncio.create_task(start_study(interaction, minutes))
         active_sessions[user_id] = task
 
@@ -79,14 +81,14 @@ async def start_study(interaction: discord.Interaction, minutes: int):
     guild = interaction.guild
     member = interaction.user
 
-    # role
+    # ROLE CHECK
     role = discord.utils.get(guild.roles, name=STUDY_ROLE_NAME)
     if not role:
         await interaction.followup.send("❌ Le rôle **Studying** n'existe pas.", ephemeral=True)
         active_sessions.pop(member.id, None)
         return
 
-    # voice channel
+    # VOICE CHANNEL
     study_channel = discord.utils.get(guild.voice_channels, name=STUDY_VOICE_CHANNEL_NAME)
     if not study_channel:
         await interaction.followup.send("❌ Le salon vocal **Étude 🤓** est introuvable.", ephemeral=True)
@@ -95,13 +97,15 @@ async def start_study(interaction: discord.Interaction, minutes: int):
 
     should_mute = False
 
+    # SI DEJA EN VOCAL
     if member.voice and member.voice.channel:
         if member.voice.channel.id != study_channel.id:
             try:
                 await member.move_to(study_channel)
             except discord.Forbidden:
                 await interaction.followup.send(
-                    "⚠️ Je n’ai pas la permission de te déplacer. Rejoins **Étude 🤓** manuellement.",
+                    "⚠️ Je n’ai pas la permission de te déplacer.\n"
+                    "Rejoins **Étude 🤓** manuellement.",
                     ephemeral=True
                 )
             except discord.HTTPException:
@@ -116,18 +120,22 @@ async def start_study(interaction: discord.Interaction, minutes: int):
             ephemeral=True
         )
 
-    # add role
+    # ROLE
     await member.add_roles(role)
 
-    # mute
+    # MUTE (si en vocal)
     if should_mute:
         try:
             await member.edit(mute=True)
         except discord.Forbidden:
             pass
 
-    await interaction.followup.send(f"📚 **Session d’étude lancée pour {minutes} minutes. Bon focus !**", ephemeral=True)
+    await interaction.followup.send(
+        f"📚 **Session d’étude lancée pour {minutes} minutes. Bon focus !**",
+        ephemeral=True
+    )
 
+    # TIMER
     try:
         await asyncio.sleep(minutes * 60)
     except asyncio.CancelledError:
@@ -152,11 +160,10 @@ async def cleanup(member: discord.Member):
     if member.voice:
         try:
             await member.edit(mute=False)
-            await asyncio.sleep(0.5)
         except discord.Forbidden:
             pass
 
-# ---- AUTO MUTE ----
+# ---- AUTO MUTE ON JOIN ----
 @bot.event
 async def on_voice_state_update(member, before, after):
     if after.channel and after.channel.name == STUDY_VOICE_CHANNEL_NAME:
@@ -170,9 +177,10 @@ async def on_voice_state_update(member, before, after):
 # ---- SLASH COMMANDS ----
 @bot.tree.command(name="study", description="Démarre une session d'étude")
 async def study(interaction: discord.Interaction):
+    view = StudyView()
     await interaction.response.send_message(
         "⏱️ **Choisis la durée de ta session d’étude :**",
-        view=StudyView(),
+        view=view,
         ephemeral=True
     )
 
@@ -180,16 +188,21 @@ async def study(interaction: discord.Interaction):
 async def stopstudying(interaction: discord.Interaction):
     user_id = interaction.user.id
     task = active_sessions.get(user_id)
-
     if not task:
-        await interaction.response.send_message("❌ Tu n’as pas de session en cours.", ephemeral=True)
+        await interaction.response.send_message(
+            "❌ Tu n’as pas de session en cours.",
+            ephemeral=True
+        )
         return
 
     task.cancel()
     await cleanup(interaction.user)
     active_sessions.pop(user_id, None)
 
-    await interaction.response.send_message("⏹️ **Ta session d’étude a été annulée et tu as été démute.**", ephemeral=True)
+    await interaction.response.send_message(
+        "⏹️ **Ta session d’étude a été annulée.**",
+        ephemeral=True
+    )
 
 # ---- RUN BOT ----
 bot.run(TOKEN)
