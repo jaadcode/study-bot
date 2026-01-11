@@ -43,44 +43,38 @@ class StudyView(View):
         super().__init__(timeout=60)
 
     @discord.ui.button(label="20 min", style=discord.ButtonStyle.primary, custom_id="study_20")
-    async def study_20(self, button: discord.ui.Button, interaction: discord.Interaction):
+    async def study_20(self, interaction: discord.Interaction, button: Button):
         await self.start_session(interaction, 20)
 
     @discord.ui.button(label="40 min", style=discord.ButtonStyle.primary, custom_id="study_40")
-    async def study_40(self, button: discord.ui.Button, interaction: discord.Interaction):
+    async def study_40(self, interaction: discord.Interaction, button: Button):
         await self.start_session(interaction, 40)
 
     @discord.ui.button(label="60 min", style=discord.ButtonStyle.primary, custom_id="study_60")
-    async def study_60(self, button: discord.ui.Button, interaction: discord.Interaction):
+    async def study_60(self, interaction: discord.Interaction, button: Button):
         await self.start_session(interaction, 60)
 
     async def start_session(self, interaction: discord.Interaction, minutes: int):
-        user_id = interaction.user.id
+        # defer l'interaction immédiatement
+        await interaction.response.defer(ephemeral=True)
 
+        user_id = interaction.user.id
         if user_id in active_sessions:
-            try:
-                await interaction.response.send_message(
-                    "⚠️ Tu as déjà une session en cours.",
-                    ephemeral=True
-                )
-            except discord.errors.InteractionAlreadyResponded:
-                await interaction.followup.send(
-                    "⚠️ Tu as déjà une session en cours.",
-                    ephemeral=True
-                )
+            await interaction.followup.send("⚠️ Tu as déjà une session en cours.", ephemeral=True)
             return
 
-        # Désactive les boutons après clic
+        # Désactiver les boutons
         for child in self.children:
             child.disabled = True
         try:
             await interaction.message.edit(view=self)
-        except (discord.NotFound, AttributeError):
-            pass
+        except discord.HTTPException:
+            pass  # Message peut être introuvable ou supprimé
 
-        # Lancement de la session
+        # Lancer la session
         task = asyncio.create_task(start_study(interaction, minutes))
         active_sessions[user_id] = task
+
 
 # ---- STUDY LOGIC ----
 async def start_study(interaction: discord.Interaction, minutes: int):
