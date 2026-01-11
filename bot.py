@@ -179,12 +179,8 @@ async def on_voice_state_update(member, before, after):
 # ---- SLASH COMMANDS ----
 @bot.tree.command(name="study", description="Démarre une session d'étude")
 async def study(interaction: discord.Interaction):
-    try:
-        await interaction.response.defer(ephemeral=True)
-    except discord.InteractionResponded:
-        pass
-
-    await interaction.followup.send(
+    # On envoie directement le message ephemeral avec les boutons
+    await interaction.response.send_message(
         "⏱️ **Choisis la durée de ta session d’étude :**",
         view=StudyView(),
         ephemeral=True
