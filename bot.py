@@ -44,15 +44,15 @@ class StudyView(View):
         super().__init__(timeout=60)
 
     @discord.ui.button(label="20 min", style=discord.ButtonStyle.primary)
-    async def study_20(self, button: Button, interaction: discord.Interaction):
+    async def study_20(self, interaction: discord.Interaction, button: Button):
         await self.start_session(interaction, 20)
 
     @discord.ui.button(label="40 min", style=discord.ButtonStyle.primary)
-    async def study_40(self, button: Button, interaction: discord.Interaction):
+    async def study_40(self, interaction: discord.Interaction, button: Button):
         await self.start_session(interaction, 40)
 
     @discord.ui.button(label="60 min", style=discord.ButtonStyle.primary)
-    async def study_60(self, button: Button, interaction: discord.Interaction):
+    async def study_60(self, interaction: discord.Interaction, button: Button):
         await self.start_session(interaction, 60)
 
     async def start_session(self, interaction: discord.Interaction, minutes: int):
