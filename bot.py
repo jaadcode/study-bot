@@ -16,20 +16,24 @@ intents = discord.Intents.default()
 intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
-active_sessions: dict[int, asyncio.Task] = {}
+active_sessions: dict[int, dict] = {}  # Store more info about sessions
 
 # ---- EVENTS ----
 @bot.event
 async def on_ready():
     print(f"✅ Connecté comme {bot.user}")
-    await bot.tree.sync()
+    try:
+        synced = await bot.tree.sync()
+        print(f"Synced {len(synced)} command(s)")
+    except Exception as e:
+        print(f"Failed to sync commands: {e}")
 
 # ---- STUDY VIEW ----
 class StudyView(View):
     def __init__(self):
-        super().__init__(timeout=60)
+        super().__init__(timeout=None)  # No timeout - we'll manage state differently
 
-    @button(label="20 min", style=discord.ButtonStyle.primary)
+    @button(label="20 min", style=discord.ButtonStyle.primary, custom_id="study_20")
     async def study_20(
         self,
         interaction: discord.Interaction,
@@ -37,7 +41,7 @@ class StudyView(View):
     ):
         await self.start(interaction, 20)
 
-    @button(label="40 min", style=discord.ButtonStyle.primary)
+    @button(label="40 min", style=discord.ButtonStyle.primary, custom_id="study_40")
     async def study_40(
         self,
         interaction: discord.Interaction,
@@ -45,7 +49,7 @@ class StudyView(View):
     ):
         await self.start(interaction, 40)
 
-    @button(label="60 min", style=discord.ButtonStyle.primary)
+    @button(label="60 min", style=discord.ButtonStyle.primary, custom_id="study_60")
     async def study_60(
         self,
         interaction: discord.Interaction,
@@ -54,94 +58,152 @@ class StudyView(View):
         await self.start(interaction, 60)
 
     async def start(self, interaction: discord.Interaction, minutes: int):
-        # ACK immédiat
-        await interaction.response.defer(ephemeral=True)
-
         user_id = interaction.user.id
 
+        # Check for existing session
         if user_id in active_sessions:
-            await interaction.followup.send(
-                "⚠️ Tu as déjà une session en cours.", ephemeral=True
+            await interaction.response.send_message(
+                "⚠️ Tu as déjà une session en cours. Utilise `/stopstudying` pour l'arrêter.",
+                ephemeral=True
             )
             return
 
-        role = discord.utils.get(
-            interaction.guild.roles,
-            name=STUDY_ROLE_NAME
+        # Respond immediately
+        await interaction.response.send_message(
+            f"📚 Session de **{minutes} minutes** lancée ! Je t'enverrai un message quand ce sera terminé.",
+            ephemeral=True
         )
+
+        # Add role
+        role = discord.utils.get(interaction.guild.roles, name=STUDY_ROLE_NAME)
         if role:
-            await interaction.user.add_roles(role)
+            try:
+                await interaction.user.add_roles(role)
+            except discord.Forbidden:
+                print(f"Cannot add role to {interaction.user.name}")
 
-        # Désactiver les boutons
-        for child in self.children:
-            child.disabled = True
-        await interaction.message.edit(view=self)
-
+        # Start the study session
         task = asyncio.create_task(
             start_study(interaction.guild.id, user_id, minutes)
         )
-        active_sessions[user_id] = task
-
-        await interaction.followup.send(
-            f"📚 Session de **{minutes} minutes** lancée.",
-            ephemeral=True
-        )
+        
+        # Store session info
+        active_sessions[user_id] = {
+            'task': task,
+            'guild_id': interaction.guild.id,
+            'minutes': minutes
+        }
 
 # ---- STUDY LOGIC ----
 async def start_study(guild_id: int, user_id: int, minutes: int):
     try:
         await asyncio.sleep(minutes * 60)
+        # Session completed normally
+        await cleanup(guild_id, user_id, cancelled=False)
     except asyncio.CancelledError:
-        pass
+        # Session was cancelled
+        await cleanup(guild_id, user_id, cancelled=True)
     finally:
-        await cleanup(guild_id, user_id)
         active_sessions.pop(user_id, None)
 
 # ---- CLEANUP ----
-async def cleanup(guild_id: int, user_id: int):
+async def cleanup(guild_id: int, user_id: int, cancelled: bool = False):
     guild = bot.get_guild(guild_id)
     if not guild:
         return
 
+    # Get member
     try:
         member = await guild.fetch_member(user_id)
     except discord.NotFound:
         return
+    except discord.HTTPException as e:
+        print(f"Error fetching member: {e}")
+        return
 
+    # Remove role
     role = discord.utils.get(guild.roles, name=STUDY_ROLE_NAME)
     if role and role in member.roles:
-        await member.remove_roles(role)
+        try:
+            await member.remove_roles(role)
+        except discord.Forbidden:
+            print(f"Cannot remove role from {member.name}")
 
+    # Send DM
     try:
-        await member.send("✅ Ta session d’étude est terminée !")
+        if cancelled:
+            await member.send("⏹️ Ta session d'étude a été annulée.")
+        else:
+            await member.send("✅ Ta session d'étude est terminée ! Bien joué ! 🎉")
     except discord.Forbidden:
-        pass
+        print(f"Cannot DM {member.name}")
+    except discord.HTTPException as e:
+        print(f"Error sending DM: {e}")
 
 # ---- SLASH COMMANDS ----
-@bot.tree.command(name="study")
+@bot.tree.command(name="study", description="Démarre une session d'étude")
 async def study(interaction: discord.Interaction):
+    """Start a study session with duration selection"""
+    
+    # Check if user already has a session
+    if interaction.user.id in active_sessions:
+        await interaction.response.send_message(
+            "⚠️ Tu as déjà une session en cours. Utilise `/stopstudying` pour l'arrêter d'abord.",
+            ephemeral=True
+        )
+        return
+    
     await interaction.response.send_message(
         "⏱️ Choisis la durée de ta session :",
         view=StudyView(),
         ephemeral=True
     )
 
-@bot.tree.command(name="stopstudying")
+@bot.tree.command(name="stopstudying", description="Arrête ta session d'étude en cours")
 async def stopstudying(interaction: discord.Interaction):
-    task = active_sessions.pop(interaction.user.id, None)
+    """Stop the current study session"""
+    
+    session = active_sessions.get(interaction.user.id)
 
-    if not task:
+    if not session:
         await interaction.response.send_message(
-            "❌ Aucune session en cours.", ephemeral=True
+            "❌ Aucune session en cours.", 
+            ephemeral=True
         )
         return
 
-    task.cancel()
-    await cleanup(interaction.guild.id, interaction.user.id)
-
+    # Cancel the task
+    session['task'].cancel()
+    
+    # Respond immediately
     await interaction.response.send_message(
-        "⏹️ Session annulée.", ephemeral=True
+        "⏹️ Session annulée.", 
+        ephemeral=True
     )
 
+@bot.tree.command(name="mystatus", description="Vérifie si tu as une session en cours")
+async def mystatus(interaction: discord.Interaction):
+    """Check your current study status"""
+    
+    session = active_sessions.get(interaction.user.id)
+    
+    if not session:
+        await interaction.response.send_message(
+            "📖 Tu n'as pas de session en cours.",
+            ephemeral=True
+        )
+    else:
+        minutes = session['minutes']
+        await interaction.response.send_message(
+            f"📚 Session de **{minutes} minutes** en cours...",
+            ephemeral=True
+        )
+
+# ---- ERROR HANDLING ----
+@bot.event
+async def on_command_error(ctx, error):
+    print(f"Command error: {error}")
+
 # ---- RUN ----
-bot.run(TOKEN)
+if __name__ == "__main__":
+    bot.run(TOKEN)
