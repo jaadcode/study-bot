@@ -68,13 +68,7 @@ class StudyView(View):
             )
             return
 
-        # Respond immediately
-        await interaction.response.send_message(
-            f"📚 Session de **{minutes} minutes** lancée ! Je t'enverrai un message quand ce sera terminé.",
-            ephemeral=True
-        )
-
-        # Add role
+        # Add role FIRST
         role = discord.utils.get(interaction.guild.roles, name=STUDY_ROLE_NAME)
         if role:
             try:
@@ -82,17 +76,24 @@ class StudyView(View):
             except discord.Forbidden:
                 print(f"Cannot add role to {interaction.user.name}")
 
-        # Start the study session
+        # Create and store session BEFORE responding
         task = asyncio.create_task(
             start_study(interaction.guild.id, user_id, minutes)
         )
         
-        # Store session info
         active_sessions[user_id] = {
             'task': task,
             'guild_id': interaction.guild.id,
             'minutes': minutes
         }
+        
+        print(f"✅ Session started for user {user_id} ({minutes} min)")
+
+        # Respond last
+        await interaction.response.send_message(
+            f"📚 Session de **{minutes} minutes** lancée ! Je t'enverrai un message quand ce sera terminé.",
+            ephemeral=True
+        )
 
 # ---- STUDY LOGIC ----
 async def start_study(guild_id: int, user_id: int, minutes: int):
@@ -163,7 +164,12 @@ async def study(interaction: discord.Interaction):
 async def stopstudying(interaction: discord.Interaction):
     """Stop the current study session"""
     
-    session = active_sessions.get(interaction.user.id)
+    user_id = interaction.user.id
+    session = active_sessions.get(user_id)
+    
+    print(f"🔍 Stop request from user {user_id}")
+    print(f"   Active sessions: {list(active_sessions.keys())}")
+    print(f"   Session found: {session is not None}")
 
     if not session:
         await interaction.response.send_message(
@@ -173,7 +179,11 @@ async def stopstudying(interaction: discord.Interaction):
         return
 
     # Cancel the task
-    session['task'].cancel()
+    try:
+        session['task'].cancel()
+        print(f"✅ Task cancelled for user {user_id}")
+    except Exception as e:
+        print(f"❌ Error cancelling task: {e}")
     
     # Respond immediately
     await interaction.response.send_message(
