@@ -74,7 +74,7 @@ class StudyView(View):
 
             # Respond IMMEDIATELY (must be within 3 seconds)
             await interaction.response.send_message(
-                f"📚 Session de **{minutes} minutes** lancée ! Je t'enverrai un message quand ce sera terminé.",
+                f"📚 Session de **{minutes} minutes** lancée ! Bon courage, tu peux le faire",
                 ephemeral=True
             )
             
@@ -161,9 +161,9 @@ async def cleanup(guild_id: int, user_id: int, cancelled: bool = False):
     # Send DM
     try:
         if cancelled:
-            await member.send("⏹️ Ta session d'étude a été annulée.")
+            await member.send("⏹️ J'espère que t'as bien étudié mon mignon")
         else:
-            await member.send("✅ Ta session d'étude est terminée ! Bien joué ! 🎉")
+            await member.send("✅ Ta session est terminée, bien ouej")
         print(f"✅ DM sent to user {user_id}")
     except discord.Forbidden:
         print(f"❌ Cannot DM {member.name} - DMs disabled")
@@ -202,8 +202,8 @@ async def study(interaction: discord.Interaction):
         print(f"❌ Error in /study command: {e}")
         traceback.print_exc()
 
-@bot.tree.command(name="stopstudying", description="Arrête ta session d'étude en cours")
-async def stopstudying(interaction: discord.Interaction):
+@bot.tree.command(name="stopstudy", description="Arrête ta session d'étude en cours")
+async def stopstudy(interaction: discord.Interaction):
     """Stop the current study session"""
     try:
         # DEFER IMMEDIATELY - this prevents timeout
@@ -212,7 +212,7 @@ async def stopstudying(interaction: discord.Interaction):
         user_id = interaction.user.id
         session = active_sessions.get(user_id)
         
-        print(f"🔍 /stopstudying request from user {user_id}")
+        print(f"🔍 /stopstudy request from user {user_id}")
         print(f"   Active sessions: {list(active_sessions.keys())}")
         print(f"   Session found: {session is not None}")
 
@@ -237,7 +237,7 @@ async def stopstudying(interaction: discord.Interaction):
         )
             
     except Exception as e:
-        print(f"❌ Error in /stopstudying command: {e}")
+        print(f"❌ Error in /stopstudy command: {e}")
         traceback.print_exc()
 
 @bot.tree.command(name="mystatus", description="Vérifie si tu as une session en cours")
