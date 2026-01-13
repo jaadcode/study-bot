@@ -175,18 +175,21 @@ async def cleanup(guild_id: int, user_id: int, cancelled: bool = False):
 async def study(interaction: discord.Interaction):
     """Start a study session with duration selection"""
     try:
+        # DEFER IMMEDIATELY - this prevents timeout
+        await interaction.response.defer(ephemeral=True)
+        
         print(f"📖 /study command used by user {interaction.user.id}")
         
         # Check if user already has a session
         if interaction.user.id in active_sessions:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "⚠️ Tu as déjà une session en cours. Utilise `/stopstudying` pour l'arrêter d'abord.",
                 ephemeral=True
             )
             return
         
-        # Respond IMMEDIATELY (within 3 seconds)
-        await interaction.response.send_message(
+        # Send followup with view
+        await interaction.followup.send(
             "⏱️ Choisis la durée de ta session :",
             view=StudyView(),
             ephemeral=True
@@ -203,6 +206,9 @@ async def study(interaction: discord.Interaction):
 async def stopstudying(interaction: discord.Interaction):
     """Stop the current study session"""
     try:
+        # DEFER IMMEDIATELY - this prevents timeout
+        await interaction.response.defer(ephemeral=True)
+        
         user_id = interaction.user.id
         session = active_sessions.get(user_id)
         
@@ -211,24 +217,24 @@ async def stopstudying(interaction: discord.Interaction):
         print(f"   Session found: {session is not None}")
 
         if not session:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "❌ Aucune session en cours.", 
                 ephemeral=True
             )
             return
 
-        # Respond immediately
-        await interaction.response.send_message(
-            "⏹️ Session annulée.", 
-            ephemeral=True
-        )
-
-        # Cancel the task after responding
+        # Cancel the task
         try:
             session['task'].cancel()
             print(f"✅ Task cancelled for user {user_id}")
         except Exception as e:
             print(f"❌ Error cancelling task: {e}")
+
+        # Send followup message
+        await interaction.followup.send(
+            "⏹️ Session annulée.", 
+            ephemeral=True
+        )
             
     except Exception as e:
         print(f"❌ Error in /stopstudying command: {e}")
@@ -238,16 +244,19 @@ async def stopstudying(interaction: discord.Interaction):
 async def mystatus(interaction: discord.Interaction):
     """Check your current study status"""
     try:
+        # DEFER IMMEDIATELY - this prevents timeout
+        await interaction.response.defer(ephemeral=True)
+        
         session = active_sessions.get(interaction.user.id)
         
         if not session:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "📖 Tu n'as pas de session en cours.",
                 ephemeral=True
             )
         else:
             minutes = session['minutes']
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"📚 Session de **{minutes} minutes** en cours...",
                 ephemeral=True
             )
