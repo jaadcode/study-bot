@@ -30,30 +30,49 @@ class StudyView(View):
         super().__init__(timeout=60)
 
     @button(label="20 min", style=discord.ButtonStyle.primary)
-    async def study_20(self, interaction: discord.Interaction, _):
+    async def study_20(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
         await self.start(interaction, 20)
 
     @button(label="40 min", style=discord.ButtonStyle.primary)
-    async def study_40(self, interaction: discord.Interaction, _):
+    async def study_40(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
         await self.start(interaction, 40)
 
     @button(label="60 min", style=discord.ButtonStyle.primary)
-    async def study_60(self, interaction: discord.Interaction, _):
+    async def study_60(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
         await self.start(interaction, 60)
 
     async def start(self, interaction: discord.Interaction, minutes: int):
+        # ACK immédiat
+        await interaction.response.defer(ephemeral=True)
+
         user_id = interaction.user.id
 
         if user_id in active_sessions:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "⚠️ Tu as déjà une session en cours.", ephemeral=True
             )
             return
 
-        role = discord.utils.get(interaction.guild.roles, name=STUDY_ROLE_NAME)
+        role = discord.utils.get(
+            interaction.guild.roles,
+            name=STUDY_ROLE_NAME
+        )
         if role:
             await interaction.user.add_roles(role)
 
+        # Désactiver les boutons
         for child in self.children:
             child.disabled = True
         await interaction.message.edit(view=self)
@@ -63,8 +82,8 @@ class StudyView(View):
         )
         active_sessions[user_id] = task
 
-        await interaction.response.send_message(
-            f"📚 Session de **{minutes} minutes** lancée !",
+        await interaction.followup.send(
+            f"📚 Session de **{minutes} minutes** lancée.",
             ephemeral=True
         )
 
